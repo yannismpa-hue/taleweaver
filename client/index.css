@@ -1,0 +1,179 @@
+/* ─── RESET ──────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #root { height: 100%; }
+
+/* ─── TOKENS ─────────────────────────────────── */
+:root {
+  --obsidian:      #09080f;
+  --void:          #0d0b18;
+  --deep:          #16122a;
+  --panel:         #1c1732;
+  --border:        rgba(201, 160, 86, 0.20);
+  --border-bright: rgba(201, 160, 86, 0.55);
+
+  --gold:          #c9a056;
+  --gold-glow:     #f0c060;
+  --gold-dim:      #7a5c28;
+  --cream:         #e8dfc7;
+  --cream-dim:     rgba(232, 223, 199, 0.55);
+  --mist:          rgba(201, 160, 86, 0.06);
+
+  --player1: #e8a045;
+  --player2: #4ecdc4;
+  --player3: #c084fc;
+  --player4: #f87171;
+
+  --ff-title:  'Cinzel Decorative', serif;
+  --ff-ui:     'Cinzel', serif;
+  --ff-story:  'EB Garamond', serif;
+
+  --radius:    8px;
+  --radius-lg: 16px;
+
+  --shadow:    0 4px 32px rgba(0,0,0,0.6);
+  --glow-gold: 0 0 28px rgba(201, 160, 86, 0.35);
+}
+
+/* ─── BASE ───────────────────────────────────── */
+body {
+  font-family: var(--ff-ui);
+  background: var(--obsidian);
+  color: var(--cream);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  cursor: pointer;
+  font-family: var(--ff-ui);
+  border: none;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+input, textarea {
+  font-family: var(--ff-story);
+  outline: none;
+}
+
+/* ─── SCROLLBAR ──────────────────────────────── */
+::-webkit-scrollbar            { width: 5px; }
+::-webkit-scrollbar-track      { background: transparent; }
+::-webkit-scrollbar-thumb      { background: var(--gold-dim); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover{ background: var(--gold); }
+
+/* ─── SHARED BUTTON STYLES ───────────────────── */
+.btn-primary {
+  background: linear-gradient(135deg, #b8872e, #e0a940);
+  color: var(--obsidian);
+  font-family: var(--ff-ui);
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.75rem 2rem;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255,255,255,0.15);
+  box-shadow: 0 2px 12px rgba(201,160,86,0.3), inset 0 1px 0 rgba(255,255,255,0.2);
+  transition: all 0.2s ease;
+}
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(201,160,86,0.5), inset 0 1px 0 rgba(255,255,255,0.3);
+  background: linear-gradient(135deg, #c9952e, #f0b940);
+}
+.btn-primary:active:not(:disabled) { transform: translateY(0); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--gold);
+  font-family: var(--ff-ui);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.65rem 1.4rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-bright);
+  transition: all 0.2s ease;
+}
+.btn-ghost:hover {
+  background: var(--mist);
+  border-color: var(--gold);
+  color: var(--gold-glow);
+}
+
+/* ─── FLOATING STARS BG ──────────────────────── */
+.stars-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+.stars-bg::before,
+.stars-bg::after {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  background-image:
+    radial-gradient(1px 1px at 10% 20%, rgba(201,160,86,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 30% 60%, rgba(255,255,255,0.3) 0%, transparent 100%),
+    radial-gradient(1px 1px at 55% 15%, rgba(201,160,86,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 70% 80%, rgba(255,255,255,0.2) 0%, transparent 100%),
+    radial-gradient(1px 1px at 85% 40%, rgba(201,160,86,0.3) 0%, transparent 100%),
+    radial-gradient(2px 2px at 20% 85%, rgba(201,160,86,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 45% 50%, rgba(255,255,255,0.25) 0%, transparent 100%),
+    radial-gradient(1px 1px at 90% 10%, rgba(201,160,86,0.5) 0%, transparent 100%),
+    radial-gradient(2px 2px at 65% 35%, rgba(255,255,255,0.15) 0%, transparent 100%),
+    radial-gradient(1px 1px at 5% 70%, rgba(201,160,86,0.3) 0%, transparent 100%);
+  background-size: 300px 300px;
+  animation: drift 90s linear infinite;
+}
+.stars-bg::after {
+  background-size: 200px 200px;
+  animation-duration: 140s;
+  animation-direction: reverse;
+  opacity: 0.6;
+}
+
+@keyframes drift {
+  from { transform: translate(0, 0); }
+  to   { transform: translate(50px, -50px); }
+}
+
+/* ─── TOAST ──────────────────────────────────── */
+.toast-wrap {
+  position: fixed;
+  top: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  animation: toast-in 0.3s ease;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.toast {
+  background: #2b1010;
+  border: 1px solid #8b1a1a;
+  color: #ff8a8a;
+  font-family: var(--ff-ui);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  padding: 0.65rem 1.4rem;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+  white-space: nowrap;
+}
+.toast.success {
+  background: #0a2b1a;
+  border-color: #1a7a4a;
+  color: #6effa8;
+}
