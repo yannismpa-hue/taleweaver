@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: taleweaver
+    env: node
+    plan: free
+    region: oregon
+    buildCommand: |
+      npm install
+      cd server && npm install
+      cd ../client && npm install && npm run build
+    startCommand: cd server && node index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
