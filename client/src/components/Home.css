@@ -1,0 +1,278 @@
+/* Home.css */
+.home {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(74, 43, 120, 0.25) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 20% 100%, rgba(201,160,86,0.08) 0%, transparent 50%),
+    var(--void);
+}
+
+.home-center {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+/* ── HEADER ── */
+.home-header {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.home-rune {
+  font-size: 1.4rem;
+  color: var(--gold);
+  animation: pulse-rune 3s ease-in-out infinite;
+}
+@keyframes pulse-rune {
+  0%, 100% { opacity: 0.6; text-shadow: none; }
+  50%       { opacity: 1;   text-shadow: 0 0 20px var(--gold); }
+}
+
+.home-title {
+  font-family: var(--ff-title);
+  font-size: clamp(2rem, 6vw, 3rem);
+  font-weight: 700;
+  color: var(--gold-glow);
+  text-shadow: 0 0 40px rgba(201,160,86,0.5), 0 2px 4px rgba(0,0,0,0.8);
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
+.home-subtitle {
+  font-family: var(--ff-story);
+  font-style: italic;
+  font-size: 1.05rem;
+  color: var(--cream-dim);
+  letter-spacing: 0.04em;
+}
+
+.home-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 180px;
+  margin-top: 0.25rem;
+}
+.home-divider-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.home-divider-ornament {
+  color: var(--gold-dim);
+  font-size: 1.1rem;
+}
+
+/* ── CARD ── */
+.home-card {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.04);
+  overflow: hidden;
+}
+
+/* ── TABS ── */
+.tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+.tab-btn {
+  flex: 1;
+  padding: 0.85rem;
+  background: transparent;
+  color: var(--cream-dim);
+  font-family: var(--ff-ui);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all 0.2s;
+}
+.tab-btn:hover { color: var(--gold); background: var(--mist); }
+.tab-btn.active {
+  color: var(--gold-glow);
+  border-bottom-color: var(--gold);
+  background: rgba(201,160,86,0.05);
+}
+
+/* ── FORM BODY ── */
+.form-body {
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-label {
+  font-family: var(--ff-ui);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.form-label-hint {
+  font-family: var(--ff-story);
+  font-style: italic;
+  font-size: 0.78rem;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--cream-dim);
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.7rem 1rem;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--cream);
+  font-size: 1rem;
+  font-family: var(--ff-story);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.form-input::placeholder { color: rgba(232,223,199,0.3); }
+.form-input:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(201,160,86,0.12);
+}
+
+.code-input {
+  font-family: var(--ff-ui);
+  letter-spacing: 0.3em;
+  font-size: 1.3rem;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* ── SLIDER ── */
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.25rem;
+}
+.form-slider {
+  flex: 1;
+  appearance: none;
+  height: 4px;
+  background: var(--border);
+  border-radius: 99px;
+  cursor: pointer;
+}
+.form-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--gold);
+  border: 2px solid var(--obsidian);
+  box-shadow: 0 0 8px rgba(201,160,86,0.5);
+  cursor: pointer;
+}
+.slider-val {
+  font-family: var(--ff-ui);
+  font-size: 1.1rem;
+  color: var(--gold-glow);
+  min-width: 36px;
+  text-align: right;
+}
+
+.form-hint {
+  font-family: var(--ff-story);
+  font-style: italic;
+  font-size: 0.85rem;
+  color: var(--cream-dim);
+  line-height: 1.5;
+  padding: 0.5rem 0;
+}
+
+.form-submit {
+  width: 100%;
+  margin-top: 0.75rem;
+  padding: 0.85rem;
+}
+
+/* ── HOW TO PLAY ── */
+.how-to {
+  font-family: var(--ff-story);
+  font-size: 0.88rem;
+  color: var(--cream-dim);
+  text-align: center;
+  line-height: 2;
+}
+.how-icon { font-style: normal; }
+
+/* ── SCENE MODE TOGGLE ───────────────────────── */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.65rem 0.85rem;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  user-select: none;
+}
+.toggle-row:hover { border-color: var(--gold); background: rgba(201,160,86,0.05); }
+
+.toggle-track {
+  flex-shrink: 0;
+  width: 40px; height: 22px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  position: relative;
+  transition: background 0.25s;
+}
+.toggle-track.on { background: rgba(201,160,86,0.4); border-color: var(--gold); }
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--cream-dim);
+  transition: transform 0.25s, background 0.25s;
+}
+.toggle-track.on .toggle-thumb {
+  transform: translateX(18px);
+  background: var(--gold-glow);
+}
+
+.toggle-info { display: flex; flex-direction: column; gap: 0.15rem; }
+.toggle-title {
+  font-family: var(--ff-ui);
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  color: var(--cream);
+}
+.toggle-desc {
+  font-family: var(--ff-story);
+  font-style: italic;
+  font-size: 0.78rem;
+  color: var(--cream-dim);
+}
