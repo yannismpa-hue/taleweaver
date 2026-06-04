@@ -231,26 +231,57 @@ io.on('connection', (socket) => {
   });
 
   socket.on('join-lobby', async ({ code, playerName }) => {
-    const c = code?.trim().toUpperCase();
-    const name = playerName?.trim().substring(0, 24);
+    const c    = code?.trim().toUpperCase();
+    const name = playerName?.trim().replace(/\s+/g, ' ').substring(0, 24);
     if (!name) return socket.emit('err', 'A name is required.');
+
+    // Normalize for comparison only — preserves original casing in storage
+    const norm = (n) => n?.trim().toLowerCase().replace(/\s+/g, ' ') || '';
+
     let lobby = lobbies.get(c);
     if (!lobby) { lobby = await loadLobbyFromDb(c); if (lobby) lobbies.set(c, lobby); }
-    if (!lobby) return socket.emit('err', 'Lobby not found. Double-check the code!');
+    if (!lobby)                    return socket.emit('err', 'Lobby not found. Double-check the code!');
     if (lobby.status === 'expired') return socket.emit('err', 'This lobby has expired.');
-    if (lobby.players.length >= MAX_PLAYERS) return socket.emit('err', 'The tavern is full (4/4).');
-    const existingIdx = lobby.players.findIndex(p => p.name === name);
+
+    // ── REJOIN CHECK FIRST (before capacity) ──────────────
+    // Matches regardless of case or extra spaces
+    const existingIdx = lobby.players.findIndex(p => norm(p.name) === norm(name));
     if (existingIdx !== -1) {
-      lobby.players[existingIdx].id = socket.id;
-      socket.join(c); socket.data = { code: c, name };
+      const slot = lobby.players[existingIdx];
+      const oldId = slot.id;
+      slot.id = socket.id;
+
+      // Restore host if this player was the host before disconnecting
+      if (lobby.hostId === oldId || lobby.hostId === `disconnected:${slot.name}`) {
+        lobby.hostId = socket.id;
+      }
+
+      // If the current-turn player was this slot, update it
+      if (lobby.players[lobby.currentPlayerIndex]?.id === socket.id) {
+        // already correct — nothing to do
+      }
+
+      socket.join(c);
+      socket.data = { code: c, name: slot.name }; // keep the stored name
       socket.emit('lobby-joined', publicState(lobby));
       socket.to(c).emit('lobby-updated', publicState(lobby));
-      saveLobby(lobby); return;
+      saveLobby(lobby);
+      return;
     }
-    if (lobby.status !== 'waiting') return socket.emit('err', 'This story has already begun.');
+
+    // ── NEW PLAYER ────────────────────────────────────────
+    if (lobby.players.length >= MAX_PLAYERS) return socket.emit('err', 'The tavern is full (4/4).');
+    if (lobby.status !== 'waiting') return socket.emit('err', 'This story has already begun — you cannot join mid-tale.');
+
     const idx = lobby.players.length;
-    lobby.players.push({ id: socket.id, name, color: PLAYER_COLORS[idx], emblem: PLAYER_EMBLEMS[idx], jokerAvailable: true, jokerLastUsedAt: -JOKER_COOLDOWN });
-    socket.join(c); socket.data = { code: c, name };
+    lobby.players.push({
+      id: socket.id, name,
+      color: PLAYER_COLORS[idx], emblem: PLAYER_EMBLEMS[idx],
+      jokerAvailable: true, jokerLastUsedAt: -JOKER_COOLDOWN,
+    });
+
+    socket.join(c);
+    socket.data = { code: c, name };
     socket.emit('lobby-joined', publicState(lobby));
     socket.to(c).emit('lobby-updated', publicState(lobby));
     saveLobby(lobby);
