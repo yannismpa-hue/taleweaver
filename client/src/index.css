@@ -177,3 +177,31 @@ input, textarea {
   border-color: #1a7a4a;
   color: #6effa8;
 }
+
+/* ── MOBILE BASE FIXES ───────────────────────── */
+@media (max-width: 600px) {
+  body { overflow-y: auto; }
+
+  .home, .waiting {
+    padding: 1.5rem 0.85rem;
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+    min-height: 100dvh;
+    align-items: flex-start;
+  }
+  .home-title { font-size: 2rem; }
+  .home-card  { border-radius: var(--radius); }
+  .form-body  { padding: 1.25rem; }
+
+  .waiting-center { gap: 1rem; }
+  .code-letters   { font-size: 1.8rem; letter-spacing: 0.25em; }
+  .start-btn      { font-size: 0.85rem; }
+
+  /* Make waiting room scrollable so Start button is always reachable */
+  .waiting { overflow-y: auto; }
+}
+
+/* Use dvh (dynamic viewport height) for mobile browsers with collapsing bars */
+@supports (height: 100dvh) {
+  .story-room { height: 100dvh; }
+  .home, .waiting { min-height: 100dvh; }
+}
