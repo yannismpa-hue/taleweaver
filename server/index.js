@@ -342,10 +342,6 @@ io.on('connection', (socket) => {
     saveLobby(lobby);
   });
 
-
-    const { code } = socket.data ?? {};
-    const lobby = lobbies.get(code);
-    if (!lobby) return;
   socket.on('start-game', async () => {
     const { code } = socket.data ?? {};
     const lobby    = lobbies.get(code);
