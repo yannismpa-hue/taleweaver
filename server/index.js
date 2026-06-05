@@ -346,6 +346,10 @@ io.on('connection', (socket) => {
     const { code } = socket.data ?? {};
     const lobby = lobbies.get(code);
     if (!lobby) return;
+  socket.on('start-game', async () => {
+    const { code } = socket.data ?? {};
+    const lobby    = lobbies.get(code);
+    if (!lobby) return;
     if (lobby.hostId !== socket.id) return socket.emit('err', 'Only the host may begin the tale.');
     if (lobby.players.length < 2) return socket.emit('err', 'You need at least 2 scribes to start.');
     lobby.status = 'playing';
