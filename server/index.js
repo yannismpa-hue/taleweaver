@@ -69,6 +69,7 @@ async function connectDb() {
 
 // ── LOBBY STORE ───────────────────────────────
 const lobbies = new Map();
+const disconnectTimers = new Map(); // socketId -> timeout handle
 
 // ── HELPERS ───────────────────────────────────
 function generateCode() {
@@ -96,6 +97,19 @@ function getVoteState(lobby) {
     totalVoters: voters.length,
     expiresAt: v.startedAt + VOTE_TIMEOUT_MS,
   };
+}
+
+// Advance currentPlayerIndex past any disconnected slots
+function advanceToActive(lobby) {
+  if (!lobby.players.length) return;
+  let safety = 0;
+  while (
+    lobby.players[lobby.currentPlayerIndex]?.id.startsWith('disconnected:') &&
+    safety < lobby.players.length
+  ) {
+    lobby.currentPlayerIndex = (lobby.currentPlayerIndex + 1) % lobby.players.length;
+    safety++;
+  }
 }
 
 function publicState(lobby) {
@@ -256,15 +270,14 @@ io.on('connection', (socket) => {
         lobby.hostId = socket.id;
       }
 
-      // If the current-turn player was this slot, update it
-      if (lobby.players[lobby.currentPlayerIndex]?.id === socket.id) {
-        // already correct — nothing to do
-      }
-
       socket.join(c);
       socket.data = { code: c, name: slot.name }; // keep the stored name
+
+      // Send to the rejoining player first so they know their view
       socket.emit('lobby-joined', publicState(lobby));
-      socket.to(c).emit('lobby-updated', publicState(lobby));
+      // Blast fresh state to the ENTIRE room (including the rejoiner) so no
+      // stale story-updated from another player can overwrite it afterwards
+      io.to(c).emit('story-updated', publicState(lobby));
       saveLobby(lobby);
       return;
     }
@@ -287,7 +300,49 @@ io.on('connection', (socket) => {
     saveLobby(lobby);
   });
 
-  socket.on('start-game', async () => {
+  // ── REJOIN SESSION (automatic reconnect) ─────
+  // Called automatically by the client on every socket reconnect.
+  // Reclaims an existing player slot without needing host approval.
+  socket.on('rejoin-session', async ({ code, name }) => {
+    const c    = code?.trim().toUpperCase();
+    const norm = (n) => n?.trim().toLowerCase().replace(/\s+/g, ' ') || '';
+
+    let lobby = lobbies.get(c);
+    if (!lobby) { lobby = await loadLobbyFromDb(c); if (lobby) lobbies.set(c, lobby); }
+    if (!lobby) return; // lobby gone — silently ignore, client stays on current view
+
+    const idx = lobby.players.findIndex(p => norm(p.name) === norm(name));
+    if (idx === -1) return; // not in this lobby
+
+    const slot   = lobby.players[idx];
+    const oldId  = slot.id;
+
+    // Cancel any pending disconnect timer for this slot
+    if (disconnectTimers.has(oldId)) {
+      clearTimeout(disconnectTimers.get(oldId));
+      disconnectTimers.delete(oldId);
+    }
+
+    slot.id = socket.id;
+
+    // Restore host if their slot was the host
+    if (lobby.hostId === oldId || lobby.hostId === `disconnected:${slot.name}`) {
+      lobby.hostId = socket.id;
+    }
+
+    // If their turn was skipped while they were gone, give it back to them
+    // by re-advancing to the correct active player
+    advanceToActive(lobby);
+
+    socket.join(c);
+    socket.data = { code: c, name: slot.name };
+
+    socket.emit('lobby-joined', publicState(lobby));
+    socket.to(c).emit('lobby-updated', publicState(lobby));
+    saveLobby(lobby);
+  });
+
+
     const { code } = socket.data ?? {};
     const lobby = lobbies.get(code);
     if (!lobby) return;
@@ -376,19 +431,42 @@ io.on('connection', (socket) => {
     if (!lobby) return;
     const idx = lobby.players.findIndex(p => p.id === socket.id);
     if (idx === -1) return;
+
     const leavingName = lobby.players[idx].name;
-    lobby.players[idx].id = `disconnected:${leavingName}`;
-    const active = lobby.players.filter(p => !p.id.startsWith('disconnected:'));
-    if (active.length === 0) {
-      setTimeout(() => { const l = lobbies.get(code); if (l && l.players.every(p => p.id.startsWith('disconnected:'))) lobbies.delete(code); }, 600000);
-      return;
-    }
-    if (lobby.hostId === socket.id) lobby.hostId = active[0].id;
-    while (lobby.players[lobby.currentPlayerIndex]?.id.startsWith('disconnected:')) {
-      lobby.currentPlayerIndex = (lobby.currentPlayerIndex + 1) % lobby.players.length;
-    }
-    io.to(code).emit('player-left', { ...publicState(lobby), notice: `${leavingName} vanished into the mist…` });
-    saveLobby(lobby);
+
+    // Give the player 20 seconds to reconnect before marking them as gone.
+    // Socket.io reconnects automatically on mobile/unstable connections,
+    // and the client sends rejoin-session on reconnect — so this timer
+    // usually gets cancelled before it fires.
+    const timer = setTimeout(() => {
+      disconnectTimers.delete(socket.id);
+      const lobby = lobbies.get(code);
+      if (!lobby) return;
+      const p = lobby.players.find(p => p.id === socket.id);
+      if (!p) return; // already reclaimed by rejoin-session
+
+      p.id = `disconnected:${leavingName}`;
+
+      const active = lobby.players.filter(p => !p.id.startsWith('disconnected:'));
+      if (active.length === 0) {
+        setTimeout(() => {
+          const l = lobbies.get(code);
+          if (l && l.players.every(p => p.id.startsWith('disconnected:'))) lobbies.delete(code);
+        }, 600000);
+        return;
+      }
+
+      if (lobby.hostId === socket.id) lobby.hostId = active[0].id;
+      advanceToActive(lobby);
+
+      io.to(code).emit('player-left', {
+        ...publicState(lobby),
+        notice: `${leavingName} vanished into the mist…`,
+      });
+      saveLobby(lobby);
+    }, 20000);
+
+    disconnectTimers.set(socket.id, timer);
   });
 });
 
