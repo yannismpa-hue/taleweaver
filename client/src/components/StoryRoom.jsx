@@ -32,13 +32,14 @@ export default function StoryRoom({ lobby, socketId, generatingScene }) {
   const iAmTarget  = vote?.targetId === socketId
   const alreadyVoted = myVote !== undefined
 
-  // background fade
+  // Background fade — when a new URL arrives, animate it in
   useEffect(() => {
     if (lobby.currentBackground && lobby.currentBackground !== bgCurrent) {
       setBgPrev(bgCurrent)
       setBgCurrent(lobby.currentBackground)
       setBgFade(true)
-      const t = setTimeout(() => { setBgFade(false); setBgPrev(null) }, 1400)
+      // Clear the animation class after it finishes (matches 1.4s in CSS)
+      const t = setTimeout(() => { setBgFade(false); setBgPrev(null) }, 1500)
       return () => clearTimeout(t)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -191,12 +192,18 @@ export default function StoryRoom({ lobby, socketId, generatingScene }) {
           <div className="story-text">
             {lobby.story.map((seg, idx) => (
               <span key={idx}
-                className={['story-segment', seg.playerId===socketId?'mine':'', seg.usedJoker?'joker-seg':'', seg.isAiScene?'ai-seg':''].join(' ')}
+                className={['story-segment',
+                  seg.playerId===socketId?'mine':'',
+                  seg.usedJoker?'joker-seg':'',
+                  seg.isAiScene?'ai-seg':'',
+                  seg.isAiTurn?'ai-turn':'',
+                ].join(' ')}
                 style={{'--pc': seg.playerColor}}
-                title={`${seg.playerName}${seg.usedJoker?' · 🃏 Joker':seg.isAiScene?' · AI Scene':''} · ${fmtTime(seg.timestamp)}`}>
+                title={`${seg.playerName}${seg.usedJoker?' · 🃏 Joker':seg.isAiScene?' · Opening Scene':seg.isAiTurn?' · AI Player':''} · ${fmtTime(seg.timestamp)}`}>
                 {idx > 0 && ' '}
                 {seg.usedJoker  && <span className="joker-mark">🃏</span>}
                 {seg.isAiScene  && <span className="ai-mark">✦</span>}
+                {seg.isAiTurn   && <span className="ai-turn-mark">✦</span>}
                 <span className="seg-emblem">{seg.playerEmblem}</span>
                 {seg.text}
               </span>
@@ -268,9 +275,15 @@ export default function StoryRoom({ lobby, socketId, generatingScene }) {
             <div className="input-panel waiting-turn" style={{'--pc': activePlayer?.color}}>
               <div className="waiting-turn-inner">
                 <span className="waiting-emblem">{activePlayer?.emblem}</span>
-                <span className="waiting-text">
-                  <strong>{activePlayer?.name}</strong> is weaving the tale…
-                </span>
+                {activePlayer?.isAiPlayer ? (
+                  <span className="waiting-text">
+                    <strong className="ai-name">{activePlayer?.name}</strong> is conjuring…
+                  </span>
+                ) : (
+                  <span className="waiting-text">
+                    <strong>{activePlayer?.name}</strong> is weaving the tale…
+                  </span>
+                )}
                 <div className="waiting-dots"><span/><span/><span/></div>
               </div>
               {myPlayer && (
