@@ -80,6 +80,11 @@ export default function App() {
 
     socket.on('ai-thinking', (data) => setLobby(data))
 
+    // Background arrives separately (Imagen 4 generates async)
+    socket.on('background-updated', ({ currentBackground }) => {
+      setLobby(prev => prev ? { ...prev, currentBackground } : prev)
+    })
+
     socket.on('turn-skipped', (data) => {
       setLobby(data)
       if (data.notice) showToast(data.notice, 'info')
@@ -111,7 +116,7 @@ export default function App() {
     return () => {
       ['connect','disconnect','lobby-created','lobby-joined','lobby-updated',
        'player-joined','generating-scene','game-started','story-updated','ai-thinking',
-       'turn-skipped','vote-started','vote-updated','vote-resolved',
+       'background-updated','turn-skipped','vote-started','vote-updated','vote-resolved',
        'player-left','you-were-kicked','err'].forEach(e => socket.off(e))
     }
   }, [])
