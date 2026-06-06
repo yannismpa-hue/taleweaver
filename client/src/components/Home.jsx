@@ -3,18 +3,24 @@ import { socket } from '../socket'
 import './Home.css'
 
 export default function Home() {
-  const [tab,        setTab]       = useState('create')
-  const [name,       setName]      = useState('')
-  const [wordLimit,  setWordLimit] = useState(20)
-  const [randomScene,setRandomScene] = useState(false)
-  const [joinCode,   setJoinCode]  = useState('')
-  const [joinName,   setJoinName]  = useState('')
-  const [loading,    setLoading]   = useState(false)
+  const [tab,          setTab]         = useState('create')
+  const [name,         setName]        = useState('')
+  const [wordLimit,    setWordLimit]    = useState(20)
+  const [imageEvery,   setImageEvery]   = useState(6)
+  const [jokerCooldown,setJokerCooldown] = useState(30)
+  const [randomScene,  setRandomScene]  = useState(false)
+  const [hasAiPlayer,  setHasAiPlayer]  = useState(false)
+  const [joinCode,     setJoinCode]     = useState('')
+  const [joinName,     setJoinName]     = useState('')
+  const [loading,      setLoading]      = useState(false)
 
   const handleCreate = () => {
     if (!name.trim()) return
     setLoading(true)
-    socket.emit('create-lobby', { playerName: name.trim(), wordLimit, randomScene })
+    socket.emit('create-lobby', {
+      playerName: name.trim(), wordLimit, randomScene,
+      hasAiPlayer, imageEvery, jokerCooldown,
+    })
     setTimeout(() => setLoading(false), 6000)
   }
 
@@ -24,6 +30,33 @@ export default function Home() {
     socket.emit('join-lobby', { code: joinCode.trim().toUpperCase(), playerName: joinName.trim() })
     setTimeout(() => setLoading(false), 6000)
   }
+
+  const Toggle = ({ value, onChange, label, desc }) => (
+    <div className="toggle-row" onClick={() => onChange(!value)}>
+      <div className={`toggle-track ${value ? 'on' : ''}`}>
+        <div className="toggle-thumb" />
+      </div>
+      <div className="toggle-info">
+        <span className="toggle-title">{label}</span>
+        <span className="toggle-desc">{desc}</span>
+      </div>
+    </div>
+  )
+
+  const Slider = ({ label, hint, value, onChange, min, max, step }) => (
+    <>
+      <label className="form-label">
+        {label}
+        <span className="form-label-hint">{hint}</span>
+      </label>
+      <div className="slider-row">
+        <input type="range" min={min} max={max} step={step}
+          value={value} onChange={e => onChange(Number(e.target.value))}
+          className="form-slider" />
+        <span className="slider-val">{value}</span>
+      </div>
+    </>
+  )
 
   return (
     <div className="home">
@@ -43,8 +76,8 @@ export default function Home() {
 
         <div className="home-card">
           <div className="tab-bar">
-            <button className={`tab-btn ${tab==='create'?'active':''}`} onClick={()=>setTab('create')}>✦ Begin a Tale</button>
-            <button className={`tab-btn ${tab==='join'?'active':''}`}   onClick={()=>setTab('join')}>✦ Join a Tale</button>
+            <button className={`tab-btn ${tab==='create'?'active':''}`} onClick={() => setTab('create')}>✦ Begin a Tale</button>
+            <button className={`tab-btn ${tab==='join'?'active':''}`}   onClick={() => setTab('join')}>✦ Join a Tale</button>
           </div>
 
           {tab === 'create' && (
@@ -52,43 +85,41 @@ export default function Home() {
               <label className="form-label">Your Scribe Name</label>
               <input className="form-input" type="text" maxLength={24}
                 placeholder="Arcane Quill, the Storyteller…"
-                value={name} onChange={e=>setName(e.target.value)}
-                onKeyDown={e=>e.key==='Enter'&&handleCreate()} />
+                value={name} onChange={e => setName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCreate()} />
 
-              <label className="form-label">
-                Word Limit Per Turn
-                <span className="form-label-hint">(5–100 words)</span>
-              </label>
-              <div className="slider-row">
-                <input type="range" min={5} max={100} step={5}
-                  value={wordLimit} onChange={e=>setWordLimit(Number(e.target.value))}
-                  className="form-slider" />
-                <span className="slider-val">{wordLimit}</span>
-              </div>
+              <div className="settings-divider">Story Settings</div>
 
-              <label className="form-label" style={{marginTop:'0.75rem'}}>Scene Mode</label>
-              <div className="toggle-row" onClick={()=>setRandomScene(v=>!v)}>
-                <div className={`toggle-track ${randomScene?'on':''}`}>
-                  <div className="toggle-thumb" />
-                </div>
-                <div className="toggle-info">
-                  <span className="toggle-title">
-                    {randomScene ? '✦ Random Scene' : '📜 Set Your Own Scene'}
-                  </span>
-                  <span className="toggle-desc">
-                    {randomScene
-                      ? 'The Muse AI will write the opening scene'
-                      : 'First player gets 500 words to set the scene'}
-                  </span>
-                </div>
-              </div>
+              <Slider label="Word Limit Per Turn" hint="(5–100)"
+                value={wordLimit} onChange={setWordLimit} min={5} max={100} step={5} />
+
+              <Slider label="New Painting Every" hint="(2–20 turns)"
+                value={imageEvery} onChange={setImageEvery} min={2} max={20} step={1} />
+
+              <Slider label="Joker Recharge After" hint="(5–60 turns)"
+                value={jokerCooldown} onChange={setJokerCooldown} min={5} max={60} step={5} />
+
+              <div className="settings-divider">Mode</div>
+
+              <Toggle
+                value={randomScene} onChange={setRandomScene}
+                label={randomScene ? '✦ Random Scene' : '📜 Set Your Own Scene'}
+                desc={randomScene ? 'The Muse AI writes the opening' : 'First player gets 500 words to set the scene'}
+              />
+
+              <Toggle
+                value={hasAiPlayer} onChange={setHasAiPlayer}
+                label={hasAiPlayer ? '🤖 AI Player ON' : '🤖 AI Player OFF'}
+                desc={hasAiPlayer ? 'The Oracle joins and takes turns' : 'Human players only'}
+              />
 
               <div className="form-hint">
-                A new scene painting appears every 6 turns, conjured from your story.
+                A new scene painting appears every {imageEvery} turns.
+                Joker recharges after {jokerCooldown} turns.
               </div>
 
               <button className="btn-primary form-submit" onClick={handleCreate}
-                disabled={!name.trim()||loading}>
+                disabled={!name.trim() || loading}>
                 {loading ? 'Summoning lobby…' : '📜 Create Lobby'}
               </button>
             </div>
@@ -99,14 +130,14 @@ export default function Home() {
               <label className="form-label">Lobby Code</label>
               <input className="form-input code-input" type="text" maxLength={6}
                 placeholder="ABCD12"
-                value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase())} />
+                value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase())} />
               <label className="form-label">Your Scribe Name</label>
               <input className="form-input" type="text" maxLength={24}
                 placeholder="Night Ink, the Wanderer…"
-                value={joinName} onChange={e=>setJoinName(e.target.value)}
-                onKeyDown={e=>e.key==='Enter'&&handleJoin()} />
+                value={joinName} onChange={e => setJoinName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleJoin()} />
               <button className="btn-primary form-submit" onClick={handleJoin}
-                disabled={!joinCode.trim()||!joinName.trim()||loading}>
+                disabled={!joinCode.trim() || !joinName.trim() || loading}>
                 {loading ? 'Entering lobby…' : '🗝 Join Lobby'}
               </button>
             </div>
@@ -115,8 +146,9 @@ export default function Home() {
 
         <div className="how-to">
           <span>👥</span> Up to 4 scribes &nbsp;·&nbsp;
-          <span>✍️</span> Take turns writing &nbsp;·&nbsp;
-          <span>🎨</span> AI paints every 6th turn
+          <span>✍️</span> Take turns &nbsp;·&nbsp;
+          <span>🎨</span> AI paints the scene &nbsp;·&nbsp;
+          <span>🃏</span> Joker cards
         </div>
       </div>
     </div>
