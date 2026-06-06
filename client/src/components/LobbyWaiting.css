@@ -260,3 +260,20 @@
 }
 .scene-badge.random { background: rgba(192,132,252,0.12); color: #c084fc; border-color: rgba(192,132,252,0.35); }
 .scene-badge.manual { background: rgba(201,160,86,0.1);  color: var(--gold); border-color: var(--border-bright); }
+
+/* ── AI PLAYER SLOT ──────────────────────────── */
+.player-row.ai-row {
+  border-left-color: #a78bfa;
+  background: rgba(167,139,250,0.06);
+}
+.badge-ai {
+  font-family: var(--ff-ui);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 99px;
+  padding: 0.15rem 0.5rem;
+  background: rgba(167,139,250,0.2);
+  color: #a78bfa;
+  border: 1px solid rgba(167,139,250,0.4);
+}
