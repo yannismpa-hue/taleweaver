@@ -24,11 +24,11 @@ const MUSE_SCENE_PROMPT =
   'naturally continue from. Write only the scene itself, no title or preamble.';
 
 const AI_PLAYER_SYSTEM_PROMPT =
-  'You are a wildly creative collaborative story writer. ' +
-  'You love dramatic twists, unexpected arrivals, ironic reversals, and vivid details just as much as a coherent scene or a dramatic deep moment. ' +
-  'You NEVER repeat what was just said. You always move the story forward ' +
-  'Write only your story continuation — no commentary, ' +
-  'no quotation marks around the whole passage, just around dialogue. no meta-text.';
+  'You are a wildly creative and unpredictable collaborative story writer. ' +
+  'You love dramatic twists, unexpected arrivals, ironic reversals, and vivid details. ' +
+  'You NEVER repeat what was just said. You always move the story forward in a ' +
+  'surprising direction. Write only your story continuation — no commentary, ' +
+  'no quotation marks around the whole passage, no meta-text.';
 
 // ══════════════════════════════════════════════════════════════════════
 //  DEFAULT SETTINGS  (overridden per-lobby by host sliders)
@@ -167,32 +167,30 @@ function publicState(lobby) {
   };
 }
 
-function makeImageUrl(story, imageEvery) {
-  const n    = imageEvery || DEFAULT_IMAGE_EVERY;
-  const text = story.slice(-n).map(s => s.text)
-    .join(' ').replace(/[^\w\s,.\-!?'"]/g,'').replace(/\s+/g,' ').trim().substring(0, 180);
-  if (!text) return null;
-  const prompt  = encodeURIComponent(`atmospheric cinematic painting, dramatic lighting: ${text}`);
-  const seed    = Math.floor(Math.random() * 99999);
-  const url     = `https://image.pollinations.ai/prompt/${prompt}?width=1280&height=720&nologo=true&seed=${seed}&model=flux`;
-  console.log('✦ BG image queued:', url.substring(0, 100) + '…');
-  return url;
-}
-
 // ── GEMINI API (Google AI Studio) ─────────────────────────────────────
 // Keys stored as GEMINI_API_KEY_1 and GEMINI_API_KEY_2 in Render env vars.
-// Tries each key across two models before giving up.
-// gemini-2.0-flash-lite was shut down June 1 2026 — do not use it.
-const GEMINI_MODELS = [
-  'gemini-2.5-flash',  // primary free-tier model (2026)
-  'gemini-3.5-flash',  // secondary free-tier model
+// On 429 (rate limit): tries the other key with the same model.
+// On any other failure: moves to next model immediately (not next key).
+// This prevents hammering both models simultaneously.
+const GEMINI_TEXT_MODELS = [
+  'gemini-2.5-flash',   // primary  — confirmed free tier June 2026
+  'gemini-3.5-flash',   // fallback — also confirmed free tier
+];
+
+// Safety settings loosened so story content isn't blocked
+const GEMINI_SAFETY = [
+  { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_HATE_SPEECH',        threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT',  threshold: 'BLOCK_ONLY_HIGH' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',  threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
 ];
 
 async function callGemini(prompt, maxTokens = 400) {
   const keys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2].filter(Boolean);
   if (!keys.length) return null;
 
-  for (const model of GEMINI_MODELS) {
+  for (const model of GEMINI_TEXT_MODELS) {
+    let succeeded = false;
     for (const key of keys) {
       try {
         const res = await fetch(
@@ -201,21 +199,112 @@ async function callGemini(prompt, maxTokens = 400) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
+              contents:         [{ parts: [{ text: prompt }] }],
               generationConfig: { maxOutputTokens: maxTokens, temperature: 0.9 },
+              safetySettings:   GEMINI_SAFETY,
             }),
             signal: AbortSignal.timeout(15000),
           }
         );
         const data = await res.json();
-        if (res.status === 429) { console.warn(`${model} rate limited, trying next…`); continue; }
+
+        if (res.status === 429) {
+          // Rate limited on this key — try the other key with the same model
+          console.warn(`${model} rate limited (key), trying other key…`);
+          continue;
+        }
+
+        if (!res.ok) {
+          // Hard error on this model (e.g. model not found, auth error)
+          console.warn(`${model} HTTP ${res.status}:`, JSON.stringify(data).substring(0, 150));
+          break; // skip remaining keys, try next model
+        }
+
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (text && text.length > 20) { console.log(`✦ Gemini OK (${model})`); return text; }
-        console.warn(`${model} empty response:`, JSON.stringify(data).substring(0, 200));
-      } catch (err) { console.error(`Gemini error (${model}):`, err.message); }
+        if (text && text.length > 10) {
+          console.log(`✦ Gemini text OK (${model})`);
+          succeeded = true;
+          return text;
+        }
+
+        // Empty or safety-blocked response
+        const reason = data?.candidates?.[0]?.finishReason || 'unknown';
+        console.warn(`${model} empty/blocked (${reason}):`, JSON.stringify(data).substring(0, 200));
+        break; // skip remaining keys, try next model
+
+      } catch (err) {
+        console.error(`${model} exception:`, err.message);
+        break; // network/timeout — skip to next model
+      }
+    }
+    if (succeeded) break;
+  }
+  return null;
+}
+
+// ── IMAGEN 4 BACKGROUND GENERATION ───────────────────────────────────
+// Returns a base64 data URL (usable directly as CSS background-image).
+// Falls back to Pollinations if Imagen fails or no keys are set.
+const IMAGEN_MODELS = [
+  'imagen-4.0-fast-generate-001',  // faster, same quality for backgrounds
+  'imagen-4.0-generate-001',       // standard
+];
+
+async function generateBackground(story, imageEvery) {
+  const n    = imageEvery || DEFAULT_IMAGE_EVERY;
+  const text = story.slice(-n).map(s => s.text)
+    .join(' ').replace(/[^\w\s,.\-!?'"]/g,'').replace(/\s+/g,' ').trim().substring(0, 180);
+  if (!text) return null;
+
+  const prompt = `atmospheric cinematic painting, dramatic moody lighting, highly detailed: ${text}`;
+  console.log('✦ Background prompt:', prompt.substring(0, 90) + '…');
+
+  const keys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2].filter(Boolean);
+
+  for (const model of IMAGEN_MODELS) {
+    for (const key of keys) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateImages?key=${key}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt,
+              number_of_images: 1,
+              aspect_ratio:     '16:9',
+              safety_filter_level: 'block_few',
+            }),
+            signal: AbortSignal.timeout(45000),
+          }
+        );
+        if (res.status === 429) { console.warn(`${model} rate limited, trying next key…`); continue; }
+        if (!res.ok) {
+          console.warn(`${model} HTTP ${res.status}:`, (await res.text().catch(()=>'')).substring(0,150));
+          break;
+        }
+        const data = await res.json();
+        const b64  = data?.predictions?.[0]?.bytesBase64Encoded;
+        const mime = data?.predictions?.[0]?.mimeType || 'image/jpeg';
+        if (b64) {
+          console.log(`✦ Imagen 4 background OK (${model}, ~${Math.round(b64.length/1024)}KB b64)`);
+          return `data:${mime};base64,${b64}`;
+        }
+        console.warn(`${model} no image in response:`, JSON.stringify(data).substring(0, 200));
+        break;
+      } catch (err) {
+        console.error(`${model} exception:`, err.message);
+        break;
+      }
     }
   }
-  return null; // all models + keys exhausted → caller uses fallback
+
+  // Pollinations fallback
+  const encoded = encodeURIComponent(`atmospheric cinematic painting, dramatic lighting: ${text}`);
+  const seed    = Math.floor(Math.random() * 99999);
+  const url     = `https://image.pollinations.ai/prompt/${encoded}?width=1280&height=720&nologo=true&seed=${seed}&model=flux`;
+  console.log('✦ Background falling back to Pollinations');
+  return url;
 }
 
 async function generateOpeningScene() {
@@ -306,12 +395,28 @@ async function generateAiTurn(code) {
 
   const ie = currentLobby.imageEvery || DEFAULT_IMAGE_EVERY;
   if (currentLobby.promptCount % ie === 0) {
-    currentLobby.currentBackground = makeImageUrl(currentLobby.story, ie);
+    triggerBackground(code, currentLobby.story, ie);
   }
 
   advanceToActive(currentLobby);
   io.to(code).emit('story-updated', publicState(currentLobby));
   saveLobby(currentLobby);
+}
+
+
+// Fire-and-forget background generation — generates async, then emits background-updated
+function triggerBackground(code, story, imageEvery) {
+  const snap = [...story]; // snapshot so mutations don't affect in-flight generation
+  generateBackground(snap, imageEvery)
+    .then(bgUrl => {
+      if (!bgUrl) return;
+      const lobby = lobbies.get(code);
+      if (!lobby) return;
+      lobby.currentBackground = bgUrl;
+      io.to(code).emit('background-updated', { currentBackground: bgUrl });
+      saveLobby(lobby);
+    })
+    .catch(err => console.error('Background generation error:', err.message));
 }
 
 // ── DB HELPERS ────────────────────────────────────────────────────────
@@ -478,6 +583,7 @@ io.on('connection', (socket) => {
     const { code } = socket.data ?? {};
     const lobby    = lobbies.get(code);
     if (!lobby) return;
+    if (lobby.status === 'playing') return; // guard against double-click / double-emit
     if (lobby.hostId !== socket.id) return socket.emit('err', 'Only the host may begin the tale.');
 
     const humanPlayers = lobby.players.filter(p => !p.isAiPlayer);
@@ -500,7 +606,7 @@ io.on('connection', (socket) => {
         usedJoker: false, isAiScene: true,
       });
       lobby.promptCount++;
-      lobby.currentBackground = makeImageUrl(lobby.story, lobby.imageEvery);
+      triggerBackground(code, lobby.story, lobby.imageEvery);
     }
 
     advanceToActive(lobby);
@@ -548,7 +654,7 @@ io.on('connection', (socket) => {
         p.jokerAvailable = true;
       }
     }
-    if (lobby.promptCount % ie === 0) lobby.currentBackground = makeImageUrl(lobby.story, ie);
+    if (lobby.promptCount % ie === 0) triggerBackground(code, lobby.story, ie);
     advanceToActive(lobby);
 
     io.to(code).emit('story-updated', publicState(lobby));
