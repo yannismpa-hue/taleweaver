@@ -78,6 +78,8 @@ export default function App() {
 
     socket.on('story-updated', (data) => setLobby(data))
 
+    socket.on('ai-thinking', (data) => setLobby(data))
+
     socket.on('turn-skipped', (data) => {
       setLobby(data)
       if (data.notice) showToast(data.notice, 'info')
@@ -108,7 +110,7 @@ export default function App() {
 
     return () => {
       ['connect','disconnect','lobby-created','lobby-joined','lobby-updated',
-       'player-joined','generating-scene','game-started','story-updated',
+       'player-joined','generating-scene','game-started','story-updated','ai-thinking',
        'turn-skipped','vote-started','vote-updated','vote-resolved',
        'player-left','you-were-kicked','err'].forEach(e => socket.off(e))
     }
