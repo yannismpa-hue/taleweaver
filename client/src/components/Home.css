@@ -276,3 +276,15 @@
   font-size: 0.78rem;
   color: var(--cream-dim);
 }
+
+/* ── SETTINGS SECTION DIVIDER ────────────────── */
+.settings-divider {
+  font-family: var(--ff-ui);
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold-dim);
+  margin-top: 0.75rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border);
+}
