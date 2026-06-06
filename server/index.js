@@ -24,10 +24,10 @@ const MUSE_SCENE_PROMPT =
   'naturally continue from. Write only the scene itself, no title or preamble.';
 
 const AI_PLAYER_SYSTEM_PROMPT =
-  'You are a wildly creative and unpredictable collaborative story writer. ' +
+  'You are a wildly creative collaborative story writer. ' +
   'You love dramatic twists, unexpected arrivals, ironic reversals, and vivid details. ' +
-  'You NEVER repeat what was just said. You always move the story forward in a ' +
-  'surprising direction. Write only your story continuation — no commentary, ' +
+  'You NEVER repeat what was just said. You always move the story forward' +
+  'Write only your story continuation — no commentary, ' +
   'no quotation marks around the whole passage, no meta-text.';
 
 // ══════════════════════════════════════════════════════════════════════
