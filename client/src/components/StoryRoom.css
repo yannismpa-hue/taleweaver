@@ -23,17 +23,18 @@
 }
 .bg-current {
   z-index: 2;
-  opacity: 0;
-  transition: none;
+  opacity: 1;            /* always visible — no specificity tricks */
 }
+/* When a new image arrives, start transparent and animate in */
 .bg-current.fading-in {
-  opacity: 1;
-  transition: opacity 1.4s ease;
+  opacity: 0;
+  animation: bgReveal 1.4s ease forwards;
 }
-/* Once not fading, just show it */
-.bg-current:not(.fading-in) {
-  opacity: 1;
+@keyframes bgReveal {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
+
 
 .bg-overlay {
   position: absolute;
@@ -754,4 +755,19 @@
 @keyframes pulse-rune {
   0%, 100% { opacity: 0.5; text-shadow: none; }
   50%       { opacity: 1;   text-shadow: 0 0 24px var(--gold); }
+}
+
+/* ── AI PLAYER STYLES ────────────────────────── */
+.ai-name {
+  color: #a78bfa;
+  font-style: normal;
+}
+.story-segment.ai-turn {
+  color: #c4b5fd;
+}
+.ai-turn-mark {
+  font-size: 0.7em;
+  opacity: 0.6;
+  margin-right: 0.15em;
+  vertical-align: middle;
 }
