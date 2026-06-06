@@ -24,11 +24,9 @@ const MUSE_SCENE_PROMPT =
   'naturally continue from. Write only the scene itself, no title or preamble.';
 
 const AI_PLAYER_SYSTEM_PROMPT =
-  'You are a wildly creative collaborative story writer. ' +
-  'You love dramatic twists, unexpected arrivals, ironic reversals, and vivid details as much as a coherent story and deep moments. ' +
-  'You NEVER repeat what was just said. You always move the story forward in a ' +
-  'surprising direction. Write only your story continuation — no commentary, ' +
-  'no quotation marks around the whole passage, no meta-text. Your Goal is to write a story, together with human players, taking turns.';
+  'Continue the story below. Write ONLY the next story passage — pure narrative, ' +
+  'no labels, no explanation of what you are doing, no title, no quotation marks ' +
+  'around the whole text. Be vivid, dramatic, and unpredictable. ';
 
 // ══════════════════════════════════════════════════════════════════════
 //  DEFAULT SETTINGS  (overridden per-lobby by host sliders)
@@ -173,8 +171,7 @@ function publicState(lobby) {
 // On any other failure: moves to next model immediately (not next key).
 // This prevents hammering both models simultaneously.
 const GEMINI_TEXT_MODELS = [
-  'gemini-2.5-flash',   // primary  — confirmed free tier June 2026
-  'gemini-3.5-flash',   // fallback — also confirmed free tier
+  'gemini-3.5-flash',   // confirmed free tier June 2026
 ];
 
 // Safety settings loosened so story content isn't blocked
@@ -203,7 +200,7 @@ async function callGemini(prompt, maxTokens = 400) {
               generationConfig: { maxOutputTokens: maxTokens, temperature: 0.9 },
               safetySettings:   GEMINI_SAFETY,
             }),
-            signal: AbortSignal.timeout(15000),
+            signal: AbortSignal.timeout(30000),
           }
         );
         const data = await res.json();
@@ -243,58 +240,68 @@ async function callGemini(prompt, maxTokens = 400) {
 }
 
 // ── IMAGEN 4 BACKGROUND GENERATION ───────────────────────────────────
-// Returns a base64 data URL (usable directly as CSS background-image).
-// Falls back to Pollinations if Imagen fails or no keys are set.
+// Uses the Gemini Developer API (generativelanguage.googleapis.com).
+// Response format: { generatedImages: [{ image: { imageBytes: "base64..." } }] }
+// Falls back to Pollinations if Imagen fails or keys are missing.
 const IMAGEN_MODELS = [
-  'imagen-4.0-fast-generate-001',  // faster, same quality for backgrounds
-  'imagen-4.0-generate-001',       // standard
+  'imagen-4.0-fast-generate-001',
+  'imagen-4.0-generate-001',
 ];
 
 async function generateBackground(story, imageEvery) {
   const n    = imageEvery || DEFAULT_IMAGE_EVERY;
-  const text = story.slice(-n).map(s => s.text)
-    .join(' ').replace(/[^\w\s,.\-!?'"]/g,'').replace(/\s+/g,' ').trim().substring(0, 180);
+  const rawText = story.slice(-n).map(s => s.text).join(' ');
+  const text = rawText.replace(/[^\w\s,.\-!?'"]/g,'').replace(/\s+/g,' ').trim().substring(0, 180);
   if (!text) return null;
 
   const prompt = `atmospheric cinematic painting, dramatic moody lighting, highly detailed: ${text}`;
-  console.log('✦ Background prompt:', prompt.substring(0, 90) + '…');
+  console.log('✦ Image prompt:', prompt.substring(0, 100) + '…');
 
   const keys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2].filter(Boolean);
+  if (!keys.length) {
+    console.warn('No Gemini keys set — skipping Imagen, using Pollinations');
+  } else {
+    for (const model of IMAGEN_MODELS) {
+      for (const key of keys) {
+        try {
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateImages?key=${key}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                prompt,
+                numberOfImages:    1,
+                aspectRatio:       '16:9',
+                safetyFilterLevel: 'block_few',
+              }),
+              signal: AbortSignal.timeout(60000), // Imagen can take up to 60s
+            }
+          );
 
-  for (const model of IMAGEN_MODELS) {
-    for (const key of keys) {
-      try {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateImages?key=${key}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              prompt,
-              number_of_images: 1,
-              aspect_ratio:     '16:9',
-              safety_filter_level: 'block_few',
-            }),
-            signal: AbortSignal.timeout(45000),
+          const body = await res.text(); // read as text first so we can always log it
+          console.log(`${model} HTTP ${res.status}:`, body.substring(0, 300));
+
+          if (res.status === 429) { console.warn(`${model} rate limited, trying other key…`); continue; }
+          if (!res.ok) { console.warn(`${model} error ${res.status}`); break; }
+
+          let data;
+          try { data = JSON.parse(body); } catch(e) { console.warn('JSON parse failed'); break; }
+
+          // Gemini Developer API format
+          const imgBytes = data?.generatedImages?.[0]?.image?.imageBytes;
+          if (imgBytes) {
+            console.log(`✦ Imagen 4 OK (${model}, ~${Math.round(imgBytes.length/1024)}KB)`);
+            return `data:image/jpeg;base64,${imgBytes}`;
           }
-        );
-        if (res.status === 429) { console.warn(`${model} rate limited, trying next key…`); continue; }
-        if (!res.ok) {
-          console.warn(`${model} HTTP ${res.status}:`, (await res.text().catch(()=>'')).substring(0,150));
+
+          console.warn(`${model} no image bytes. Full response:`, JSON.stringify(data).substring(0, 400));
+          break; // no image → try next model
+
+        } catch (err) {
+          console.error(`${model} exception:`, err.message);
           break;
         }
-        const data = await res.json();
-        const b64  = data?.predictions?.[0]?.bytesBase64Encoded;
-        const mime = data?.predictions?.[0]?.mimeType || 'image/jpeg';
-        if (b64) {
-          console.log(`✦ Imagen 4 background OK (${model}, ~${Math.round(b64.length/1024)}KB b64)`);
-          return `data:${mime};base64,${b64}`;
-        }
-        console.warn(`${model} no image in response:`, JSON.stringify(data).substring(0, 200));
-        break;
-      } catch (err) {
-        console.error(`${model} exception:`, err.message);
-        break;
       }
     }
   }
@@ -303,7 +310,7 @@ async function generateBackground(story, imageEvery) {
   const encoded = encodeURIComponent(`atmospheric cinematic painting, dramatic lighting: ${text}`);
   const seed    = Math.floor(Math.random() * 99999);
   const url     = `https://image.pollinations.ai/prompt/${encoded}?width=1280&height=720&nologo=true&seed=${seed}&model=flux`;
-  console.log('✦ Background falling back to Pollinations');
+  console.log('✦ Using Pollinations fallback for background');
   return url;
 }
 
@@ -357,7 +364,7 @@ async function generateAiTurn(code) {
       : `Continue the story in ${wl} words or fewer. Move it forward in a surprising direction.`) +
     '\n\nWrite ONLY the continuation text. No labels, no quotation marks wrapping the whole thing.';
 
-  const raw = await callGemini(prompt, Math.ceil(wl * 1.5));
+  const raw = await callGemini(prompt, Math.max(300, Math.ceil(wl * 5)));
 
   // Re-fetch lobby in case state changed while waiting for Gemini
   const currentLobby = lobbies.get(code);
