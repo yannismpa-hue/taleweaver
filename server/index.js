@@ -25,10 +25,10 @@ const MUSE_SCENE_PROMPT =
 
 const AI_PLAYER_SYSTEM_PROMPT =
   'You are a wildly creative collaborative story writer. ' +
-  'You love dramatic twists, unexpected arrivals, ironic reversals, and vivid details. ' +
-  'You NEVER repeat what was just said. You always move the story forward' +
+  'You love dramatic twists, unexpected arrivals, ironic reversals, and vivid details just as much as a coherent scene or a dramatic deep moment. ' +
+  'You NEVER repeat what was just said. You always move the story forward ' +
   'Write only your story continuation — no commentary, ' +
-  'no quotation marks around the whole passage, no meta-text.';
+  'no quotation marks around the whole passage, just around dialogue. no meta-text.';
 
 // ══════════════════════════════════════════════════════════════════════
 //  DEFAULT SETTINGS  (overridden per-lobby by host sliders)
@@ -181,33 +181,41 @@ function makeImageUrl(story, imageEvery) {
 
 // ── GEMINI API (Google AI Studio) ─────────────────────────────────────
 // Keys stored as GEMINI_API_KEY_1 and GEMINI_API_KEY_2 in Render env vars.
-// Falls back from key 1 → key 2 on rate-limit (429).
+// Tries each key across two models before giving up.
+// gemini-2.0-flash-lite was shut down June 1 2026 — do not use it.
+const GEMINI_MODELS = [
+  'gemini-2.5-flash',  // primary free-tier model (2026)
+  'gemini-3.5-flash',  // secondary free-tier model
+];
+
 async function callGemini(prompt, maxTokens = 400) {
   const keys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2].filter(Boolean);
   if (!keys.length) return null;
 
-  for (const key of keys) {
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: maxTokens, temperature: 0.9 },
-          }),
-          signal: AbortSignal.timeout(15000),
-        }
-      );
-      const data = await res.json();
-      if (res.status === 429) { console.warn('Gemini rate limited, trying next key…'); continue; }
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-      if (text && text.length > 20) { console.log('✦ Gemini OK'); return text; }
-      console.warn('Gemini empty/short response:', JSON.stringify(data).substring(0, 200));
-    } catch (err) { console.error('Gemini call error:', err.message); }
+  for (const model of GEMINI_MODELS) {
+    for (const key of keys) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { maxOutputTokens: maxTokens, temperature: 0.9 },
+            }),
+            signal: AbortSignal.timeout(15000),
+          }
+        );
+        const data = await res.json();
+        if (res.status === 429) { console.warn(`${model} rate limited, trying next…`); continue; }
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (text && text.length > 20) { console.log(`✦ Gemini OK (${model})`); return text; }
+        console.warn(`${model} empty response:`, JSON.stringify(data).substring(0, 200));
+      } catch (err) { console.error(`Gemini error (${model}):`, err.message); }
+    }
   }
-  return null; // all keys exhausted
+  return null; // all models + keys exhausted → caller uses fallback
 }
 
 async function generateOpeningScene() {
