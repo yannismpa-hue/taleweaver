@@ -38,20 +38,30 @@ export default function LobbyWaiting({ lobby, socketId }) {
         <div className="players-section">
           <div className="section-label">
             Scribes Assembled
-            <span className="count-badge">{lobby.players.length} / 4</span>
+            <span className="count-badge">
+              {lobby.players.filter(p=>!p.isAiPlayer).length} / 4
+              {lobby.hasAiPlayer && ' + AI'}
+            </span>
           </div>
           <div className="player-list">
-            {lobby.players.map(player => (
+            {lobby.players.filter(p => !p.isAiPlayer).map(player => (
               <div key={player.id} className="player-row" style={{'--pc': player.color}}>
                 <div className="player-emblem" style={{color: player.color}}>{player.emblem}</div>
                 <span className="player-row-name">{player.name}</span>
                 <div className="player-badges">
-                  {player.id === socketId    && <span className="badge-you">You</span>}
+                  {player.id === socketId     && <span className="badge-you">You</span>}
                   {player.id === lobby.hostId && <span className="badge-host">Host</span>}
                 </div>
               </div>
             ))}
-            {Array.from({length: 4 - lobby.players.length}).map((_,i) => (
+            {lobby.hasAiPlayer && (
+              <div className="player-row ai-row">
+                <div className="player-emblem" style={{color:'#a78bfa'}}>✦</div>
+                <span className="player-row-name">The Oracle</span>
+                <div className="player-badges"><span className="badge-ai">AI</span></div>
+              </div>
+            )}
+            {Array.from({length: 4 - lobby.players.filter(p=>!p.isAiPlayer).length}).map((_,i) => (
               <div key={`e${i}`} className="player-row empty">
                 <div className="player-emblem empty-slot">⬡</div>
                 <span className="player-row-name empty-name">Waiting for scribe…</span>
@@ -61,11 +71,11 @@ export default function LobbyWaiting({ lobby, socketId }) {
         </div>
 
         <div className="settings-summary">
-          <span>📏</span><span><strong>{lobby.wordLimit}</strong> words per turn</span>
+          <span>📏</span><span><strong>{lobby.wordLimit}</strong> words/turn</span>
           <span>·</span>
-          <span>🎨</span><span>New scene every <strong>6</strong> turns</span>
+          <span>🎨</span><span>every <strong>{lobby.imageEvery || 6}</strong> turns</span>
           <span>·</span>
-          <span>🃏</span><span>Joker every <strong>30</strong> turns</span>
+          <span>🃏</span><span>recharge: <strong>{lobby.jokerCooldown || 30}</strong> turns</span>
         </div>
 
         {isHost ? (
