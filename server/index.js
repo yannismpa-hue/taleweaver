@@ -24,9 +24,12 @@ const MUSE_SCENE_PROMPT =
   'naturally continue from. Write only the scene itself, no title or preamble.';
 
 const AI_PLAYER_SYSTEM_PROMPT =
-  'Continue the story below. Write ONLY the next story passage — pure narrative, ' +
-  'no labels, no explanation of what you are doing, no title, no quotation marks ' +
-  'around the whole text. Be vivid, dramatic, and unpredictable. ';
+  'You are a skilled collaborative author contributing to a shared story. ' +
+  'Write only your continuation passage — pure narrative prose, no labels, ' +
+  'no meta-commentary, no title, no preamble. ' +
+  'Match the tone and genre the other writers have established. ' +
+  'Advance the plot naturally with vivid detail. ' +
+  'Do not undo or contradict what previous writers have written.';
 
 // ══════════════════════════════════════════════════════════════════════
 //  DEFAULT SETTINGS  (overridden per-lobby by host sliders)
@@ -239,78 +242,82 @@ async function callGemini(prompt, maxTokens = 400) {
   return null;
 }
 
-// ── IMAGEN 4 BACKGROUND GENERATION ───────────────────────────────────
-// Uses the Gemini Developer API (generativelanguage.googleapis.com).
-// Response format: { generatedImages: [{ image: { imageBytes: "base64..." } }] }
-// Falls back to Pollinations if Imagen fails or keys are missing.
+// ── BACKGROUND IMAGE GENERATION ─────────────────────────────────────────
+// Uses gemini-2.5-flash-image (free tier, up to 500/day via generateContent).
+// imagen-4.0-* requires a paid plan — do NOT use it with free AI Studio keys.
+// Falls back to Pollinations if the Gemini image call fails.
 const IMAGEN_MODELS = [
-  'imagen-4.0-fast-generate-001',
-  'imagen-4.0-generate-001',
+  'gemini-2.5-flash-image',   // free tier, "Nano Banana" — 500 req/day
 ];
 
 async function generateBackground(story, imageEvery) {
-  const n    = imageEvery || DEFAULT_IMAGE_EVERY;
+  const n       = imageEvery || DEFAULT_IMAGE_EVERY;
   const rawText = story.slice(-n).map(s => s.text).join(' ');
-  const text = rawText.replace(/[^\w\s,.\-!?'"]/g,'').replace(/\s+/g,' ').trim().substring(0, 180);
+  const text    = rawText.replace(/[^\w\s,.\'\-!?"]/g, '')
+                         .replace(/\s+/g, ' ').trim().substring(0, 200);
   if (!text) return null;
 
-  const prompt = `atmospheric cinematic painting, dramatic moody lighting, highly detailed: ${text}`;
+  const prompt =
+    'Generate a wide cinematic background painting — atmospheric, dramatic lighting, ' +
+    `highly detailed. Scene: ${text}`;
   console.log('✦ Image prompt:', prompt.substring(0, 100) + '…');
 
   const keys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2].filter(Boolean);
-  if (!keys.length) {
-    console.warn('No Gemini keys set — skipping Imagen, using Pollinations');
-  } else {
-    for (const model of IMAGEN_MODELS) {
-      for (const key of keys) {
-        try {
-          const res = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateImages?key=${key}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                prompt,
-                numberOfImages:    1,
-                aspectRatio:       '16:9',
-                safetyFilterLevel: 'block_few',
-              }),
-              signal: AbortSignal.timeout(60000), // Imagen can take up to 60s
-            }
-          );
 
-          const body = await res.text(); // read as text first so we can always log it
-          console.log(`${model} HTTP ${res.status}:`, body.substring(0, 300));
-
-          if (res.status === 429) { console.warn(`${model} rate limited, trying other key…`); continue; }
-          if (!res.ok) { console.warn(`${model} error ${res.status}`); break; }
-
-          let data;
-          try { data = JSON.parse(body); } catch(e) { console.warn('JSON parse failed'); break; }
-
-          // Gemini Developer API format
-          const imgBytes = data?.generatedImages?.[0]?.image?.imageBytes;
-          if (imgBytes) {
-            console.log(`✦ Imagen 4 OK (${model}, ~${Math.round(imgBytes.length/1024)}KB)`);
-            return `data:image/jpeg;base64,${imgBytes}`;
+  for (const model of IMAGEN_MODELS) {
+    for (const key of keys) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+          {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents:       [{ parts: [{ text: prompt }] }],
+              generationConfig: { responseModalities: ['image', 'text'] },
+            }),
+            signal: AbortSignal.timeout(60000),
           }
+        );
 
-          console.warn(`${model} no image bytes. Full response:`, JSON.stringify(data).substring(0, 400));
-          break; // no image → try next model
-
-        } catch (err) {
-          console.error(`${model} exception:`, err.message);
+        const body = await res.text();
+        if (res.status === 429) { console.warn(`${model} rate limited, trying next key…`); continue; }
+        if (!res.ok) {
+          console.warn(`${model} HTTP ${res.status}:`, body.substring(0, 200));
           break;
         }
+
+        let data;
+        try { data = JSON.parse(body); } catch (e) { console.warn('JSON parse failed'); break; }
+
+        // Response: candidates[0].content.parts[] — find the part with inline_data
+        const parts = data?.candidates?.[0]?.content?.parts ?? [];
+        for (const part of parts) {
+          if (part.inline_data?.data) {
+            const mime = part.inline_data.mimeType || 'image/png';
+            console.log(`✦ Image OK (${model}, ~${Math.round(part.inline_data.data.length / 1024)}KB b64)`);
+            return `data:${mime};base64,${part.inline_data.data}`;
+          }
+        }
+
+        // Got a response but no image — log to diagnose
+        const reason = data?.candidates?.[0]?.finishReason;
+        console.warn(`${model} — no image in response. finishReason: ${reason}`);
+        console.warn('Parts received:', parts.map(p => Object.keys(p)).join(', '));
+        break;
+
+      } catch (err) {
+        console.error(`${model} exception:`, err.message);
+        break;
       }
     }
   }
 
-  // Pollinations fallback
+  // ── Pollinations fallback ─────────────────────────────────────────────
   const encoded = encodeURIComponent(`atmospheric cinematic painting, dramatic lighting: ${text}`);
   const seed    = Math.floor(Math.random() * 99999);
   const url     = `https://image.pollinations.ai/prompt/${encoded}?width=1280&height=720&nologo=true&seed=${seed}&model=flux`;
-  console.log('✦ Using Pollinations fallback for background');
+  console.log('✦ Falling back to Pollinations');
   return url;
 }
 
