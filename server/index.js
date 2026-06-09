@@ -242,84 +242,6 @@ async function callGemini(prompt, maxTokens = 400) {
   return null;
 }
 
-// ── BACKGROUND IMAGE GENERATION ─────────────────────────────────────────
-// Uses gemini-2.5-flash-image (free tier, up to 500/day via generateContent).
-// imagen-4.0-* requires a paid plan — do NOT use it with free AI Studio keys.
-// Falls back to Pollinations if the Gemini image call fails.
-const IMAGEN_MODELS = [
-  'gemini-2.5-flash-image',   // free tier, "Nano Banana" — 500 req/day
-];
-
-async function generateBackground(story, imageEvery) {
-  const n       = imageEvery || DEFAULT_IMAGE_EVERY;
-  const rawText = story.slice(-n).map(s => s.text).join(' ');
-  const text    = rawText.replace(/[^\w\s,.\'\-!?"]/g, '')
-                         .replace(/\s+/g, ' ').trim().substring(0, 200);
-  if (!text) return null;
-
-  const prompt =
-    'Generate a wide cinematic background painting — atmospheric, dramatic lighting, ' +
-    `highly detailed. Scene: ${text}`;
-  console.log('✦ Image prompt:', prompt.substring(0, 100) + '…');
-
-  const keys = [process.env.GEMINI_API_KEY_1, process.env.GEMINI_API_KEY_2].filter(Boolean);
-
-  for (const model of IMAGEN_MODELS) {
-    for (const key of keys) {
-      try {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-          {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents:       [{ parts: [{ text: prompt }] }],
-              generationConfig: { responseModalities: ['image', 'text'] },
-            }),
-            signal: AbortSignal.timeout(60000),
-          }
-        );
-
-        const body = await res.text();
-        if (res.status === 429) { console.warn(`${model} rate limited, trying next key…`); continue; }
-        if (!res.ok) {
-          console.warn(`${model} HTTP ${res.status}:`, body.substring(0, 200));
-          break;
-        }
-
-        let data;
-        try { data = JSON.parse(body); } catch (e) { console.warn('JSON parse failed'); break; }
-
-        // Response: candidates[0].content.parts[] — find the part with inline_data
-        const parts = data?.candidates?.[0]?.content?.parts ?? [];
-        for (const part of parts) {
-          if (part.inline_data?.data) {
-            const mime = part.inline_data.mimeType || 'image/png';
-            console.log(`✦ Image OK (${model}, ~${Math.round(part.inline_data.data.length / 1024)}KB b64)`);
-            return `data:${mime};base64,${part.inline_data.data}`;
-          }
-        }
-
-        // Got a response but no image — log to diagnose
-        const reason = data?.candidates?.[0]?.finishReason;
-        console.warn(`${model} — no image in response. finishReason: ${reason}`);
-        console.warn('Parts received:', parts.map(p => Object.keys(p)).join(', '));
-        break;
-
-      } catch (err) {
-        console.error(`${model} exception:`, err.message);
-        break;
-      }
-    }
-  }
-
-  // ── Pollinations fallback ─────────────────────────────────────────────
-  const encoded = encodeURIComponent(`atmospheric cinematic painting, dramatic lighting: ${text}`);
-  const seed    = Math.floor(Math.random() * 99999);
-  const url     = `https://image.pollinations.ai/prompt/${encoded}?width=1280&height=720&nologo=true&seed=${seed}&model=flux`;
-  console.log('✦ Falling back to Pollinations');
-  return url;
-}
 
 async function generateOpeningScene() {
   // 1 — Gemini
@@ -409,7 +331,9 @@ async function generateAiTurn(code) {
 
   const ie = currentLobby.imageEvery || DEFAULT_IMAGE_EVERY;
   if (currentLobby.promptCount % ie === 0) {
-    triggerBackground(code, currentLobby.story, ie);
+    const pUrl = pollinationsUrl(currentLobby.story, ie);
+    if (pUrl) currentLobby.currentBackground = pUrl;
+    // background already set via pollinationsUrl above
   }
 
   advanceToActive(currentLobby);
@@ -418,19 +342,17 @@ async function generateAiTurn(code) {
 }
 
 
-// Fire-and-forget background generation — generates async, then emits background-updated
-function triggerBackground(code, story, imageEvery) {
-  const snap = [...story]; // snapshot so mutations don't affect in-flight generation
-  generateBackground(snap, imageEvery)
-    .then(bgUrl => {
-      if (!bgUrl) return;
-      const lobby = lobbies.get(code);
-      if (!lobby) return;
-      lobby.currentBackground = bgUrl;
-      io.to(code).emit('background-updated', { currentBackground: bgUrl });
-      saveLobby(lobby);
-    })
-    .catch(err => console.error('Background generation error:', err.message));
+
+// Build a Pollinations URL synchronously — used as an immediate placeholder
+// while async Gemini image generation runs in the background.
+function pollinationsUrl(story, imageEvery) {
+  const n    = imageEvery || DEFAULT_IMAGE_EVERY;
+  const text = story.slice(-n).map(s => s.text)
+    .join(' ').replace(/[^\w\s,.'\-!?"]/g, '').replace(/\s+/g, ' ').trim().substring(0, 200);
+  if (!text) return null;
+  const enc  = encodeURIComponent('atmospheric cinematic painting, dramatic lighting: ' + text);
+  const seed = Math.floor(Math.random() * 99999);
+  return 'https://image.pollinations.ai/prompt/' + enc + '?width=1280&height=720&nologo=true&seed=' + seed + '&model=turbo';
 }
 
 // ── DB HELPERS ────────────────────────────────────────────────────────
@@ -490,6 +412,11 @@ function resolveVote(code) {
     if (kickedSocket) {
       kickedSocket.emit('you-were-kicked', { message: 'The scribes have voted to remove you.' });
       kickedSocket.leave(code);
+    }
+    // If we just kicked the host, transfer to next non-AI human player
+    if (lobby.hostId === vote.targetId) {
+      const newHost = lobby.players.find(p => !p.id.startsWith('disconnected:') && !p.isAiPlayer);
+      if (newHost) lobby.hostId = newHost.id;
     }
     io.to(code).emit('vote-resolved', { ...publicState(lobby), notice: `${vote.targetName} was removed by vote.` });
   } else {
@@ -620,7 +547,9 @@ io.on('connection', (socket) => {
         usedJoker: false, isAiScene: true,
       });
       lobby.promptCount++;
-      triggerBackground(code, lobby.story, lobby.imageEvery);
+      const pUrl = pollinationsUrl(lobby.story, lobby.imageEvery);
+      if (pUrl) lobby.currentBackground = pUrl;
+      // background already set via pollinationsUrl above
     }
 
     advanceToActive(lobby);
@@ -668,7 +597,12 @@ io.on('connection', (socket) => {
         p.jokerAvailable = true;
       }
     }
-    if (lobby.promptCount % ie === 0) triggerBackground(code, lobby.story, ie);
+    if (lobby.promptCount % ie === 0) {
+      // Set Pollinations URL now so background appears in story-updated immediately
+      const pUrl = pollinationsUrl(lobby.story, ie);
+      if (pUrl) lobby.currentBackground = pUrl;
+      // Gemini image upgrade removed — Pollinations is the image source
+    }
     advanceToActive(lobby);
 
     io.to(code).emit('story-updated', publicState(lobby));
@@ -705,7 +639,8 @@ io.on('connection', (socket) => {
     if (!lobby || lobby.status !== 'playing') return;
     if (lobby.activeVote) return socket.emit('err', 'A vote is already in progress.');
     const target = lobby.players.find(p => p.id === targetId);
-    if (!target || target.isAiPlayer) return socket.emit('err', 'Cannot vote kick that player.');
+    if (!target) return socket.emit('err', 'Player not found.');
+    if (target.id === 'ai-player' && !lobby.players.some(p => p.id === socket.id && !p.isAiPlayer)) return; // safety
     if (targetId === socket.id) return socket.emit('err', "You can't vote kick yourself.");
     const me = lobby.players.find(p => p.id === socket.id);
     lobby.activeVote = {
@@ -727,6 +662,17 @@ io.on('connection', (socket) => {
     );
     if (voters.every(p => lobby.activeVote.votes[p.id] !== undefined)) resolveVote(code);
     else io.to(code).emit('vote-updated', publicState(lobby));
+  });
+
+  socket.on('delete-segment', ({ index }) => {
+    const { code } = socket.data ?? {};
+    const lobby    = lobbies.get(code);
+    if (!lobby || lobby.status !== 'playing') return;
+    if (lobby.hostId !== socket.id) return socket.emit('err', 'Only the host can remove segments.');
+    if (typeof index !== 'number' || index < 0 || index >= lobby.story.length) return;
+    lobby.story.splice(index, 1);
+    io.to(code).emit('story-updated', publicState(lobby));
+    saveLobby(lobby);
   });
 
   socket.on('disconnect', () => {
