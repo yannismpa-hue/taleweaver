@@ -9,9 +9,11 @@ export default function StoryRoom({ lobby, socketId, generatingScene }) {
   const [bgPrev,      setBgPrev]     = useState(null)
   const [bgFade,      setBgFade]     = useState(false)
   const [voteConfirm, setVoteConfirm] = useState(null)  // playerId being targeted
+  const [hoveredSeg,  setHoveredSeg]  = useState(null)  // index of hovered story segment
   const scrollRef = useRef(null)
   const inputRef  = useRef(null)
 
+  const isHost        = lobby.hostId === socketId
   const isMyTurn      = lobby.currentPlayerId === socketId
   const myPlayer      = lobby.players.find(p => p.id === socketId)
   const activePlayer  = lobby.players.find(p => p.id === lobby.currentPlayerId)
@@ -65,6 +67,12 @@ export default function StoryRoom({ lobby, socketId, generatingScene }) {
   const handleSkip = () => {
     if (!isMyTurn) return
     socket.emit('skip-turn')
+  }
+
+  const handleDeleteSegment = (index) => {
+    if (!isHost) return
+    socket.emit('delete-segment', { index })
+    setHoveredSeg(null)
   }
 
   const handleVoteKick = (targetId) => {
@@ -197,15 +205,22 @@ export default function StoryRoom({ lobby, socketId, generatingScene }) {
                   seg.usedJoker?'joker-seg':'',
                   seg.isAiScene?'ai-seg':'',
                   seg.isAiTurn?'ai-turn':'',
+                  isHost?'host-seg':'',
                 ].join(' ')}
                 style={{'--pc': seg.playerColor}}
-                title={`${seg.playerName}${seg.usedJoker?' · 🃏 Joker':seg.isAiScene?' · Opening Scene':seg.isAiTurn?' · AI Player':''} · ${fmtTime(seg.timestamp)}`}>
+                title={`${seg.playerName}${seg.usedJoker?' · 🃏 Joker':seg.isAiScene?' · Opening Scene':seg.isAiTurn?' · AI Player':''} · ${fmtTime(seg.timestamp)}`}
+                onMouseEnter={() => isHost && setHoveredSeg(idx)}
+                onMouseLeave={() => setHoveredSeg(null)}
+              >
                 {idx > 0 && ' '}
-                {seg.usedJoker  && <span className="joker-mark">🃏</span>}
-                {seg.isAiScene  && <span className="ai-mark">✦</span>}
-                {seg.isAiTurn   && <span className="ai-turn-mark">✦</span>}
-                <span className="seg-emblem">{seg.playerEmblem}</span>
                 {seg.text}
+                {isHost && hoveredSeg === idx && (
+                  <button
+                    className="delete-seg-btn"
+                    onClick={e => { e.stopPropagation(); handleDeleteSegment(idx) }}
+                    title="Delete this segment"
+                  >✕</button>
+                )}
               </span>
             ))}
           </div>
