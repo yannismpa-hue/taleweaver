@@ -343,14 +343,15 @@ async function generateAiTurn(code) {
 
 
 
-// Build a Pollinations URL synchronously — used as an immediate placeholder
-// while async Gemini image generation runs in the background.
+// Build a Pollinations URL synchronously.
+// IMPORTANT: encodeURIComponent does NOT encode ' ( ) — those characters break
+// CSS url() without quotes. Strip everything except word chars and spaces.
 function pollinationsUrl(story, imageEvery) {
   const n    = imageEvery || DEFAULT_IMAGE_EVERY;
   const text = story.slice(-n).map(s => s.text)
-    .join(' ').replace(/[^\w\s,.'\-!?"]/g, '').replace(/\s+/g, ' ').trim().substring(0, 200);
+    .join(' ').replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 200);
   if (!text) return null;
-  const enc  = encodeURIComponent('atmospheric cinematic painting, dramatic lighting: ' + text);
+  const enc  = encodeURIComponent('atmospheric cinematic painting dramatic lighting: ' + text);
   const seed = Math.floor(Math.random() * 99999);
   return 'https://image.pollinations.ai/prompt/' + enc + '?width=1280&height=720&nologo=true&seed=' + seed + '&model=turbo';
 }
