@@ -97,9 +97,9 @@ export default function StoryRoom({ lobby, socketId, generatingScene }) {
 
   return (
     <div className="story-room">
-      {bgPrev && <div className="bg-layer bg-prev" style={{backgroundImage:`url(${bgPrev})`}} />}
+      {bgPrev && <div className="bg-layer bg-prev" style={{backgroundImage:`url('${bgPrev}')`}} />}
       <div className={`bg-layer bg-current ${bgFade?'fading-in':''}`}
-        style={{backgroundImage: bgCurrent?`url(${bgCurrent})`:'none'}} />
+        style={{backgroundImage: bgCurrent?`url('${bgCurrent}')`:'none'}} />
       <div className="bg-overlay" />
       {!bgCurrent && <div className="stars-bg" />}
 
